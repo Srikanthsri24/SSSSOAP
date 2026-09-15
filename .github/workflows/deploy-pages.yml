@@ -1,0 +1,54 @@
+name: Deploy SSSSO AP to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build site
+        run: pnpm run build
+      - name: Start site server
+        run: pnpm start -- --port 8787 > /tmp/sssso-server.log 2>&1 &
+      - name: Export static Pages bundle
+        run: |
+          for i in {1..30}; do curl --silent --fail http://127.0.0.1:8787/ >/dev/null && break || sleep 2; done
+          curl --silent --fail http://127.0.0.1:8787/ >/dev/null
+          node scripts/export-github-pages.mjs
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
